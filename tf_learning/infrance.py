@@ -15,74 +15,85 @@ import os
 import sys
 import argparse
 
+from imutils.video import VideoStream
+from imutils.video import FPS
+import numpy as np
+import argparse
+import imutils
+
 def load_model(model_path):
     # Load the model
-    # model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
     model = models.resnet18(pretrained=True)
     
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, 2)
     # Load the saved model
     model.load_state_dict(torch.load(model_path))
-    model = torch.load(model_path)
     # Set the model to inference mode
     model.eval()
     return model
 
 
-def detect_object(img, model):
-    # draw the bounding box and label on the image
-    def draw_bounding_box(img, boxes, class_ids, labels, obj_count):
-        # Draw the bounding box
-        for i in range(obj_count):
-            (x, y, w, h) = boxes[i]
-            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            # Draw the label
-            text = "{}: {:.4f}".format(labels[class_ids[i]], scores[i])
-            cv2.putText(img, text, (x, y-5), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (0, 255, 0), 2)
-        return img
-    
-    # Convert the image from OpenCV BGR format to PyTorch RGB format
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    # Convert the image from NumPy / OpenCV to PIL format
-    img = Image.fromarray(img)
-    # Resize the image
-    img = img.resize((300, 300))
-    # Convert the image to a PyTorch Tensor
-    img = transforms.ToTensor()(img)
-    # Add an extra batch dimension since PyTorch treats all images as batches
-    img = img.unsqueeze(0)
-    # Get the detections
-    detections = model(img)
-    # Get the detections predicted scores and class
-    scores = list(detections[0]['scores'].detach().numpy())
-    class_ids = list(detections[0]['labels'].detach().numpy())
-    # Get the bounding box coordinates
-    boxes = [[(i[0], i[1]), (i[2], i[3])] for i in list(detections[0]['boxes'].detach().numpy())]
-    obj_count = len(scores)
-    labels = ['bees', 'ants']
-    
-    # draw the bounding box and label on the image
-    img = draw_bounding_box(img, boxes, class_ids, labels, obj_count)
-
 def open_webcam( model):
-    # Open the webcam
-    cap = cv2.VideoCapture(0)
-    
+    # initialize the vide stream, allow the camera sensor to warm up and initialize FPS counter
+    print('[INFO] starting video stream...')
+    vs = VideoStream(src=0).start()
+    time.sleep(2.0)
+    fps = FPS().start()
+
+    classes = ['bees', 'ants']
+
+    # loop over the frames from video stream
     while True:
-        # Capture frame-by-frame
-        ret, frame = cap.read()
-        # Display the resulting frame
-        # Press q to quit
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        # grab the frame from threaded video stream and resize it to have a maximum width of 400 pixels
+        frame = vs.read()
+        frame = imutils.resize(frame, width=400)
+        orig = frame.copy()
+
+        # conver the frame from BGR to RGB channels ordering and change from from channels last to channels first ordering
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = frame.transpose((2, 0, 1))
+
+        # add a batch dimension, scale the raw pixel intensities to the range [0, 1] and convert frame to a
+        # floating point tensor
+        frame = np.expand_dims(frame, axis=0)
+        frame = frame/255.0
+        frame = torch.FloatTensor(frame)
+
+        # send the input to device and pass it through the model to get detections and predictions
+        frame = frame.to('cpu')
+        detections = model(frame)[0]
+
+        #  loop over the detections
+        for i in range(0, detections.shape[0]):
+            # extract the confidence associated with predictions
+            confidence = detections[i]
+
+            # filter weak detections by ensuring the confidence is greater then minimum confidence
+            if confidence > 0.5:
+                # extract the index of class label from detections then compute (x, y) coordinates of bounding box for object
+                idx = int(detections['labels'][i])
+                box = detections['boxes'][i].detach().cpu().numpy()
+                (startX, startY, endX, endY) = box.astype('int')
+
+                # display predictions to our terminal
+                label = f'{classes[idx]}: {confidence * 100:.2f}%'
+
+                # draw bounding box and label on image
+                cv2.rectangle(orig, (startX, startY), (endX, endY), colors[idx], 2)
+                y = startY - 15 if startY - 15 > 15 else startY + 15
+                cv2.putText(orig, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cv2.colors[idx], 2)
+
+        cv2.imshow('Frame', orig)
+        key = cv2.waitKey(1)
+
+        # if q is pressed breat the loop
+        if key == ord('q'):
             break
 
-        # detect the object
-        detect_object(frame, model)
-        cv2.imshow('frame',frame)
-
-    # When everything done, release the capture 
-    cap.release()
-    cv2.destroyAllWindows()
+        # update FPS counter
+        fps.update()
 
 def main():
     # construct the argument parse and parse the arguments

@@ -49,6 +49,15 @@ the inference method is not working yet
 ## torch video folder
 this holds an example of how to use pytorch on a camera feed 
 
+# PyTorch Detection Transfer learning example 
+
+## One of the best examples 👍
+
+image detection example is here:
+ https://github.com/deepsense-ai/Keras-PyTorch-AvP-transfer-learning
+
+  they use resnet50 to train on a custom dataset for alien vs predator detection
+
 # One Yolo to rule them all
 well like 5 of them... there are more added all the time it seems.
 Here is an example of pytorch Yolo v3.

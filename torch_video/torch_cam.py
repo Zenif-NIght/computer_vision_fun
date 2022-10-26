@@ -12,7 +12,7 @@ import cv2 as cv
 # construct the argument parser and parse the argument
 ap = argparse.ArgumentParser()
 ap.add_argument('-m', '--model', type=str, default='frcnn-mobilenet',
-                choices=['frcnn-resnet', 'frcnn-mobilenet', 'retinanet'], help='Name of Object detection Model')
+                choices=['frcnn-resnet', 'frcnn-mobilenet', 'retinanet', ], help='Name of Object detection Model')
 # you can download the coco_classes.pickle file from this repo
 # https://github.com/dipanwita2019/object-detection-pytorch/blob/master/coco_classes.pickle
 ap.add_argument('-l', '--labels', type=str, default='torch_video/coco_classes.pickle',
@@ -23,6 +23,11 @@ args = vars(ap.parse_args())
 # set device we will  use to run the model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# # if mac Apple silicon os them use mps
+# import platform
+# if platform.system() == 'Darwin':
+#     device = torch.device('mps')
+
 # load a list of categories in coco dataset and then generate a set of bounding box colors for each class
 classes = pickle.loads(open(args['labels'], 'rb').read())
 colors = np.random.uniform(0, 255, size=(len(classes), 3))
@@ -31,12 +36,16 @@ colors = np.random.uniform(0, 255, size=(len(classes), 3))
 models = {
     'frcnn-resnet': detection.fasterrcnn_resnet50_fpn,
     'frcnn-mobilenet': detection.fasterrcnn_mobilenet_v3_large_320_fpn,
-    'retinanet': detection.retinanet_resnet50_fpn
+    'retinanet': detection.retinanet_resnet50_fpn,
 }
 
 # load model and set it to evaluation mode
 model = models[args['model']](pretrained=True, progress=True, num_classes=len(classes),
                               pretrained_backbone=True).to(device)
+# import torchvision as tv
+# model = tv.models.resnet50(weights=tv.models.ResNet50_Weights.DEFAULT).to(device)
+# model = tv.models.resnet50(weights=tv.models.ResNet50_Weights.IMAGENET1K_V1).to(device)
+
 model.eval()
 
 # initialize the vide stream, allow the camera sensor to warm up and initialize FPS counter
